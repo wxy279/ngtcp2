@@ -13,6 +13,17 @@ typedef enum _dproxy_myquic_statistics_e
 	dproxy_myquic_stats_rx_bytes_ide,
 	dproxy_myquic_stats_ping_recv_ide,
 	dproxy_myquic_stats_pkt_discarded_ide,// id 9
+	dproxy_myquic_stats_open_streams_ide,
+	dproxy_myquic_stats_open_conns_ide,// this counter can not be counted in ngtcp2 because conn->stats_ctx is setup after the call
+	dproxy_myquic_stats_rx_strm_dblk_ide,// 0x15 receive stream data blocked
+	dproxy_myquic_stats_rx_conn_dblk_ide,// 0x14 receive data block
+	dproxy_myquic_stats_rx_strms_blk_bdi_ide,// 0x16 receive streams blocked bidi;   id 14
+	dproxy_myquic_stats_rx_strms_blk_uni_ide,// 0x17 receive streams blocked uni
+	dproxy_myquic_stats_tx_conn_dblk_ide,// 0x14 send data block
+	dproxy_myquic_stats_tx_strm_dblk_ide,// 0x15 send stream data blocked
+	dproxy_myquic_stats_tx_strms_blk_bdi_ide,// 0x16 send streams blocked bidi
+	dproxy_myquic_stats_tx_strms_blk_uni_ide,// 0x17 send streams blocked uni;  id 19
+
 	dproxy_myquic_N_STATS
 } dproxy_myquic_statistics_e;
 
