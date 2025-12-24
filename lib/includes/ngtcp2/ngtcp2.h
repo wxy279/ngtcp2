@@ -7014,6 +7014,16 @@ NGTCP2_EXTERN uint32_t ngtcp2_select_version(const uint32_t *preferred_versions,
  */
 NGTCP2_EXTERN void ngtcp2_secure_clear(void *data, size_t len);
 
+/**
+* @function
+*
+* `ngtcp2_conn_set_dptest_stats_ctx` sets statistics context
+* |stats_ctx| to |conn|.	Internally, it is used as an opaque
+* pointer.
+*/
+NGTCP2_EXTERN void ngtcp2_conn_set_dptest_stats_ctx(ngtcp2_conn *conn,
+												  void *stats_ctx);
+
 /*
  * Versioned function wrappers
  */

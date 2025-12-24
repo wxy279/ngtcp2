@@ -2800,6 +2800,8 @@ conn_write_handshake_pkt(ngtcp2_conn *conn, ngtcp2_pkt_info *pi, uint8_t *dest,
 
   ++conn->cstat.pkt_sent;
   conn->cstat.bytes_sent += (uint64_t)spktlen;
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_pkts_ide);
+  FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_tx_bytes_ide, (uint64_t)spktlen);
 
   ngtcp2_qlog_metrics_updated(&conn->qlog, &conn->cstat);
 
@@ -4553,6 +4555,9 @@ static ngtcp2_ssize conn_write_pkt(ngtcp2_conn *conn, ngtcp2_pkt_info *pi,
   ++conn->cstat.pkt_sent;
   conn->cstat.bytes_sent += (uint64_t)nwrite;
 
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_pkts_ide);
+  FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_tx_bytes_ide, (uint64_t)nwrite);
+
   ngtcp2_qlog_metrics_updated(&conn->qlog, &conn->cstat);
 
   ++pktns->tx.last_pkt_num;
@@ -4769,6 +4774,8 @@ ngtcp2_ssize ngtcp2_conn_write_single_frame_pkt(
 
   ++conn->cstat.pkt_sent;
   conn->cstat.bytes_sent += (uint64_t)nwrite;
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_pkts_ide);
+  FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_tx_bytes_ide, (uint64_t)nwrite);
 
   ngtcp2_qlog_metrics_updated(&conn->qlog, &conn->cstat);
 
@@ -6929,6 +6936,7 @@ conn_recv_handshake_pkt(ngtcp2_conn *conn, const ngtcp2_path *path,
       }
       break;
     case NGTCP2_FRAME_PING:
+	  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_ping_recv_ide);
       ++conn->cstat.ping_recv;
       require_ack = 1;
       break;
@@ -7026,7 +7034,7 @@ static ngtcp2_ssize conn_recv_handshake_cpkt(ngtcp2_conn *conn,
                  unrecoverable, therefore drop connection. */
               return nread;
             }
-
+            FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
             ++conn->cstat.pkt_discarded;
 
             /* If server discards first Initial, then drop connection
@@ -7046,7 +7054,7 @@ static ngtcp2_ssize conn_recv_handshake_cpkt(ngtcp2_conn *conn,
                unrecoverable, therefore drop connection. */
             return nread;
           }
-
+          FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
           ++conn->cstat.pkt_discarded;
 
           return (ngtcp2_ssize)dgramlen;
@@ -7054,6 +7062,7 @@ static ngtcp2_ssize conn_recv_handshake_cpkt(ngtcp2_conn *conn,
       }
 
       if (nread == NGTCP2_ERR_DISCARD_PKT) {
+        FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
         ++conn->cstat.pkt_discarded;
         return (ngtcp2_ssize)dgramlen;
       }
@@ -7075,6 +7084,8 @@ static ngtcp2_ssize conn_recv_handshake_cpkt(ngtcp2_conn *conn,
 
     ngtcp2_log_infof(&conn->log, NGTCP2_LOG_EVENT_PKT, "read packet ", nread,
                      " left ", pktlen);
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_pkts_ide);
+    FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_rx_bytes_ide, (uint64_t)nread);
   }
 
   return (ngtcp2_ssize)dgramlen;
@@ -9095,6 +9106,7 @@ conn_recv_delayed_handshake_pkt(ngtcp2_conn *conn, const ngtcp2_pkt_info *pi,
       }
       break;
     case NGTCP2_FRAME_PING:
+      FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_ping_recv_ide);
       ++conn->cstat.ping_recv;
       /* fall through */
     case NGTCP2_FRAME_CRYPTO:
@@ -9617,6 +9629,7 @@ static ngtcp2_ssize conn_recv_pkt(ngtcp2_conn *conn, const ngtcp2_path *path,
       }
       break;
     case NGTCP2_FRAME_PING:
+      FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_ping_recv_ide);
       ++conn->cstat.ping_recv;
       non_probing_pkt = 1;
       break;
@@ -9816,6 +9829,7 @@ static int conn_process_buffered_protected_pkt(ngtcp2_conn *conn,
     *ppc = next;
     if (nread < 0) {
       if (nread == NGTCP2_ERR_DISCARD_PKT) {
+        FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
         ++conn->cstat.pkt_discarded;
         continue;
       }
@@ -9851,6 +9865,7 @@ static int conn_process_buffered_handshake_pkt(ngtcp2_conn *conn,
     *ppc = next;
     if (nread < 0) {
       if (nread == NGTCP2_ERR_DISCARD_PKT) {
+        FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
         ++conn->cstat.pkt_discarded;
         continue;
       }
@@ -9997,6 +10012,7 @@ static int conn_recv_cpkt(ngtcp2_conn *conn, const ngtcp2_path *path,
         }
       }
       if (nread == NGTCP2_ERR_DISCARD_PKT) {
+        FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
         ++conn->cstat.pkt_discarded;
         return 0;
       }
@@ -10009,6 +10025,8 @@ static int conn_recv_cpkt(ngtcp2_conn *conn, const ngtcp2_path *path,
 
     ++conn->cstat.pkt_recv;
     conn->cstat.bytes_recv += (uint64_t)nread;
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_pkts_ide);
+	FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_rx_bytes_ide, (uint64_t)nread);
 
     ngtcp2_log_infof(&conn->log, NGTCP2_LOG_EVENT_PKT, "read packet ", nread,
                      " left ", pktlen);
@@ -10276,6 +10294,7 @@ int ngtcp2_conn_read_pkt_versioned(ngtcp2_conn *conn, const ngtcp2_path *path,
       !ngtcp2_dcidtr_check_path_retired(&conn->dcid.dtr, path)) {
     ngtcp2_log_info(&conn->log, NGTCP2_LOG_EVENT_CON,
                     "ignore packet from unknown path");
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pkt_discarded_ide);
     ++conn->cstat.pkt_discarded;
 
     return 0;
@@ -13450,6 +13469,7 @@ int ngtcp2_conn_on_loss_detection_timer(ngtcp2_conn *conn, ngtcp2_tstamp ts) {
 
   ngtcp2_log_infof(&conn->log, NGTCP2_LOG_EVENT_LDC,
                    "pto_count=", cstat->pto_count);
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_pto_fired_ide);
 
   ngtcp2_conn_set_loss_detection_timer(conn, ts);
 
@@ -14077,6 +14097,11 @@ void *ngtcp2_conn_get_tls_native_handle2(const ngtcp2_conn *conn) {
 void ngtcp2_conn_set_tls_native_handle(ngtcp2_conn *conn,
                                        void *tls_native_handle) {
   conn->crypto.tls_native_handle = tls_native_handle;
+}
+
+void ngtcp2_conn_set_dptest_stats_ctx(ngtcp2_conn *conn, void *stats_ctx)
+{
+	conn->stats_ctx = stats_ctx;
 }
 
 const ngtcp2_ccerr *ngtcp2_conn_get_ccerr(ngtcp2_conn *conn) {

@@ -454,7 +454,6 @@ static int rtb_on_pkt_lost(ngtcp2_rtb *rtb, ngtcp2_rtb_entry *ent,
   if (!(ent->flags & NGTCP2_RTB_ENTRY_FLAG_SKIP)) {
     ngtcp2_log_pkt_lost(rtb->log, ent->hd.pkt_num, ent->hd.type, ent->hd.flags,
                         ent->ts);
-
     if (rtb->qlog) {
       ngtcp2_qlog_pkt_lost(rtb->qlog, ent);
     }
@@ -464,6 +463,8 @@ static int rtb_on_pkt_lost(ngtcp2_rtb *rtb, ngtcp2_rtb_entry *ent,
       (NGTCP2_RTB_ENTRY_FLAG_PMTUD_PROBE | NGTCP2_RTB_ENTRY_FLAG_SKIP)) {
     ++rtb->num_lost_ignore_pkts;
   } else {
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_lost_pkts_ide);
+	FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_lost_bytes_ide, ent->pktlen);
     ++cstat->pkt_lost;
     cstat->bytes_lost += ent->pktlen;
 

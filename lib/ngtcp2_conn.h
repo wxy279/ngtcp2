@@ -54,6 +54,7 @@
 #include "ngtcp2_dcidtr.h"
 #include "ngtcp2_pcg.h"
 #include "ngtcp2_ratelim.h"
+#include "dptest_ngtcp2_stats_adapter.h"
 
 typedef enum {
   /* Client specific handshake states */
@@ -645,6 +646,7 @@ struct ngtcp2_conn {
   ngtcp2_tstamp handshake_confirmed_ts;
   ngtcp2_pcg32 pcg;
   void *user_data;
+  void *stats_ctx;/*used by dptest to counter the ngtcp2 stack*/
   uint32_t client_chosen_version;
   uint32_t negotiated_version;
   /* flags is bitwise OR of zero or more of NGTCP2_CONN_FLAG_*. */
