@@ -23,7 +23,10 @@ typedef enum _dproxy_myquic_statistics_e
 	dproxy_myquic_stats_tx_strm_dblk_ide,// 0x15 send stream data blocked
 	dproxy_myquic_stats_tx_strms_blk_bdi_ide,// 0x16 send streams blocked bidi
 	dproxy_myquic_stats_tx_strms_blk_uni_ide,// 0x17 send streams blocked uni;  id 19
-
+	dproxy_myquic_stats_rx_rst_strm_ide, // 0x04, receive reset_stream
+	dproxy_myquic_stats_rx_stop_snding_ide,// 0x05, recive stop_sending
+	dproxy_myquic_stats_tx_rst_strm_ide,// 0x04, send reset_stream
+	dproxy_myquic_stats_tx_stop_snding_ide,// 0x05, send stop_sending
 	dproxy_myquic_N_STATS
 } dproxy_myquic_statistics_e;
 

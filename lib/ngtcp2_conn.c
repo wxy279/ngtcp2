@@ -3881,7 +3881,7 @@ static ngtcp2_ssize conn_write_pkt(ngtcp2_conn *conn, ngtcp2_pkt_info *pi,
           *pfrc = nfrc;
 
           strm->flags &= ~NGTCP2_STRM_FLAG_SEND_RESET_STREAM;
-
+          FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_rst_strm_ide);
           rv =
             conn_ppe_write_frame_hd_log(conn, ppe, &hd_logged, hd, &nfrc->fr);
           if (rv != 0) {
@@ -3924,7 +3924,7 @@ static ngtcp2_ssize conn_write_pkt(ngtcp2_conn *conn, ngtcp2_pkt_info *pi,
             *pfrc = nfrc;
 
             strm->flags &= ~NGTCP2_STRM_FLAG_SEND_STOP_SENDING;
-
+            FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_stop_snding_ide);
             rv =
               conn_ppe_write_frame_hd_log(conn, ppe, &hd_logged, hd, &nfrc->fr);
             if (rv != 0) {
@@ -9593,6 +9593,7 @@ static ngtcp2_ssize conn_recv_pkt(ngtcp2_conn *conn, const ngtcp2_path *path,
       if (rv != 0) {
         return rv;
       }
+	  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_rst_strm_ide);
       non_probing_pkt = 1;
       break;
     case NGTCP2_FRAME_STOP_SENDING:
@@ -9600,6 +9601,7 @@ static ngtcp2_ssize conn_recv_pkt(ngtcp2_conn *conn, const ngtcp2_path *path,
       if (rv != 0) {
         return rv;
       }
+	  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_stop_snding_ide);
       non_probing_pkt = 1;
       break;
     case NGTCP2_FRAME_MAX_STREAM_DATA:
