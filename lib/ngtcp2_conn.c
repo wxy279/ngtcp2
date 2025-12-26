@@ -1657,6 +1657,20 @@ static int delete_strms_each(void *data, void *ptr) {
   ngtcp2_conn *conn = ptr;
   ngtcp2_strm *s = data;
 
+	if (bidi_stream(s->stream_id)) {
+		if (s->flags & NGTCP2_STRM_FLAG_SHUT_RD) {
+			FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_shut_close_ide);
+		} else {
+			FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_open_close_ide);
+		}
+
+		if (s->flags & NGTCP2_STRM_FLAG_SHUT_WR) {
+			FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_shut_close_ide);
+		} else {
+			FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_close_ide);
+		}
+	}
+
   ngtcp2_strm_free(s);
   ngtcp2_objalloc_strm_release(&conn->strm_objalloc, s);
   FAST_STATS_SUB(conn->stats_ctx, dproxy_myquic_stats_open_streams_ide);
@@ -1681,6 +1695,14 @@ static void conn_vneg_crypto_free(ngtcp2_conn *conn) {
 void ngtcp2_conn_del(ngtcp2_conn *conn) {
   if (conn == NULL) {
     return;
+  }
+
+  if (conn->state == NGTCP2_CS_DRAINING) {
+  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_draining_closed_ide);
+  } else if (conn->state == NGTCP2_CS_CLOSING) {
+  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_closing_closed_ide);
+  } else {
+  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_others_closed_ide);
   }
 
   ngtcp2_qlog_end(&conn->qlog);
@@ -4241,6 +4263,9 @@ static ngtcp2_ssize conn_write_pkt(ngtcp2_conn *conn, ngtcp2_pkt_info *pi,
     vmsg->stream.strm->flags |= NGTCP2_STRM_FLAG_ANY_SENT;
 
     if (nfrc->fr.stream.fin) {
+	  if (bidi_stream(vmsg->stream.strm->stream_id) && !(vmsg->stream.strm->flags & NGTCP2_STRM_FLAG_SHUT_WR)) {
+	  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_shut_ide);
+	  }
       ngtcp2_strm_shutdown(vmsg->stream.strm, NGTCP2_STRM_FLAG_SHUT_WR);
     }
 
@@ -6029,7 +6054,7 @@ static int conn_recv_connection_close(ngtcp2_conn *conn,
 
   ccerr->reasonlen = ngtcp2_min(fr->reasonlen, NGTCP2_CCERR_MAX_REASONLEN);
   ngtcp2_cpymem((uint8_t *)ccerr->reason, fr->reason, ccerr->reasonlen);
-
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_draining_ide);
   return 0;
 }
 
@@ -7507,7 +7532,9 @@ static int conn_recv_stream(ngtcp2_conn *conn, const ngtcp2_stream *fr,
       return NGTCP2_ERR_FINAL_SIZE;
     } else {
       strm->rx.last_offset = fr_end_offset;
-
+	  if (bidi) {
+      	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_open_shut_ide);
+	  }
       ngtcp2_strm_shutdown(strm, NGTCP2_STRM_FLAG_SHUT_RD);
     }
   } else {
@@ -7807,6 +7834,10 @@ static int conn_recv_reset_stream(ngtcp2_conn *conn,
                                           ngtcp2_strm_rx_offset(strm));
   }
 
+  if (bidi) {
+     FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_open_shut_ide);
+  }
+
   conn->rx.offset += datalen;
   ngtcp2_conn_extend_max_offset(conn, datalen);
 
@@ -7929,7 +7960,9 @@ static int conn_recv_stop_sending(ngtcp2_conn *conn,
       return rv;
     }
   }
-
+  if (bidi) {
+  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_shut_ide);
+  }
   strm->flags |=
     NGTCP2_STRM_FLAG_SHUT_WR | NGTCP2_STRM_FLAG_STOP_SENDING_RECVED;
 
@@ -7987,7 +8020,7 @@ static int conn_on_stateless_reset(ngtcp2_conn *conn, const ngtcp2_path *path,
   }
 
   conn->state = NGTCP2_CS_DRAINING;
-
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_draining_ide);
   ngtcp2_log_rx_sr(&conn->log, &sr);
 
   ngtcp2_qlog_stateless_reset_pkt_received(&conn->qlog, &sr);
@@ -12686,7 +12719,7 @@ ngtcp2_ssize ngtcp2_conn_write_connection_close_pkt(
   }
 
   conn->state = NGTCP2_CS_CLOSING;
-
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_closing_ide);
   return nwrite;
 }
 
@@ -12771,7 +12804,7 @@ ngtcp2_ssize ngtcp2_conn_write_application_close_pkt(
 
 fin:
   conn->state = NGTCP2_CS_CLOSING;
-
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_closing_ide);
   return res;
 }
 
@@ -12895,6 +12928,21 @@ int ngtcp2_conn_close_stream(ngtcp2_conn *conn, ngtcp2_strm *strm) {
     ngtcp2_pq_remove(&conn->tx.strmq, &strm->pe);
   }
 
+  if (bidi_stream(strm->stream_id)) {
+	  if (strm->flags & NGTCP2_STRM_FLAG_SHUT_RD) {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_shut_close_ide);
+	  } else {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_open_close_ide);
+	  }
+  
+	  if (strm->flags & NGTCP2_STRM_FLAG_SHUT_WR) {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_shut_close_ide);
+	  } else {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_close_ide);
+	  }
+  }
+
+
   ngtcp2_strm_free(strm);
   ngtcp2_objalloc_strm_release(&conn->strm_objalloc, strm);
   FAST_STATS_SUB(conn->stats_ctx, dproxy_myquic_stats_open_streams_ide);
@@ -12934,6 +12982,9 @@ static int conn_shutdown_stream_write(ngtcp2_conn *conn, ngtcp2_strm *strm,
     return 0;
   }
 
+  if (bidi_stream(strm->stream_id) && !(strm->flags & NGTCP2_STRM_FLAG_SHUT_WR)) {
+  	FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_shut_ide);
+  }
   /* Set this flag so that we don't accidentally send DATA to this
      stream. */
   strm->flags |= NGTCP2_STRM_FLAG_SHUT_WR | NGTCP2_STRM_FLAG_RESET_STREAM;
@@ -13153,6 +13204,20 @@ static int delete_strms_pq_each(void *data, void *ptr) {
 
   if (ngtcp2_strm_is_tx_queued(s)) {
     ngtcp2_pq_remove(&conn->tx.strmq, &s->pe);
+  }
+
+  if (bidi_stream(s->stream_id)) {
+	  if (s->flags & NGTCP2_STRM_FLAG_SHUT_RD) {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_shut_close_ide);
+	  } else {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_strm_open_close_ide);
+	  }
+  
+	  if (s->flags & NGTCP2_STRM_FLAG_SHUT_WR) {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_shut_close_ide);
+	  } else {
+		  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_tx_strm_open_close_ide);
+	  }
   }
 
   ngtcp2_strm_free(s);
