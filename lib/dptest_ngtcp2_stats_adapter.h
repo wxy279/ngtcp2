@@ -1,3 +1,6 @@
+#ifndef __DPTEST_NGTCP2_STATS_ADAPTER_H__
+#define __DPTEST_NGTCP2_STATS_ADAPTER_H__
+
 #include "dptest_ngtcp2_stats.h"
 
 typedef struct fast_stats_ctx {
@@ -21,3 +24,5 @@ typedef struct fast_stats_ctx {
   } while (0)
 
 #define FAST_STATS_SUB(ctx_ptr, id) FAST_STATS_MINUS((ctx_ptr), (id), 1)
+
+#endif /* __DPTEST_NGTCP2_STATS_ADAPTER_H__*/
