@@ -14416,6 +14416,246 @@ ngtcp2_ssize ngtcp2_conn_write_aggregate_pkt2_versioned(
   return nwrite;
 }
 
+static size_t ngtcp2_vec_len_sum(const ngtcp2_vec *bufv, size_t bufvcnt) {
+	size_t i;
+	size_t n = 0;
+  
+	for (i = 0; i < bufvcnt; ++i) {
+	  if (SIZE_MAX - n < bufv[i].len) {
+		return SIZE_MAX;
+	  }
+	  n += bufv[i].len;
+	}
+  
+	return n;
+}
+  
+static int ngtcp2_aggregate_vec_has_space_for_next(
+	size_t seg_left, size_t seg_idx, const ngtcp2_vec *bufv, size_t bufvcnt,
+	size_t path_max_udp_payloadlen, size_t limit_left) {
+	size_t avail;
+  
+	if (limit_left < path_max_udp_payloadlen) {
+	  return 0;
+	}
+  
+	if (seg_left >= path_max_udp_payloadlen) {
+	  return 1;
+	}
+  
+	if (seg_idx + 1 >= bufvcnt) {
+	  return 0;
+	}
+  
+	avail = bufv[seg_idx + 1].len;
+	if (avail > limit_left) {
+	  avail = limit_left;
+	}
+  
+	return avail >= path_max_udp_payloadlen;
+}
+  
+static ngtcp2_ssize ngtcp2_conn_write_aggregate_pkt2_versioned_vec_impl(
+	ngtcp2_conn *conn, ngtcp2_path *path, int pkt_info_version,
+	ngtcp2_pkt_info *pi, const ngtcp2_vec *bufv, size_t bufvcnt,
+	size_t *pbufv_used, size_t *bufv_usedlen, size_t *pgsolen,
+	ngtcp2_write_pkt write_pkt, size_t num_pkts, ngtcp2_tstamp ts,
+	size_t limit) {
+	size_t max_udp_payloadlen = ngtcp2_conn_get_max_tx_udp_payload_size(conn);
+	size_t path_max_udp_payloadlen =
+	  ngtcp2_conn_get_path_max_tx_udp_payload_size(conn);
+	ngtcp2_ssize rv = 0;
+	ngtcp2_ssize nwrite;
+	size_t limit_left;
+	size_t total_written = 0;
+	size_t seg_idx = 0;
+	uint8_t *wbuf;
+	size_t seg_left;
+	size_t seg_written = 0;
+	size_t used = 0;
+	size_t wbuflen;
+	ngtcp2_ecn_state ecn_state;
+	int first_pkt;
+	ngtcp2_pkt_info pi_discard;
+	ngtcp2_path_storage path_discard;
+	(void)pkt_info_version;
+  
+	if (bufv_usedlen) {
+	  memset(bufv_usedlen, 0, sizeof(size_t) * bufvcnt);
+	}
+	if (pbufv_used) {
+	  *pbufv_used = 0;
+	}
+  
+	if (!bufv || bufvcnt == 0 || !pbufv_used || !bufv_usedlen || !pgsolen) {
+	  return NGTCP2_ERR_INVALID_ARGUMENT;
+	}
+  
+	limit_left = ngtcp2_vec_len_sum(bufv, bufvcnt);
+	if (limit_left > limit) {
+	  limit_left = limit;
+	}
+  
+	if (limit_left < path_max_udp_payloadlen) {
+	  return 0;
+	}
+  
+	if (num_pkts == 0) {
+	  num_pkts = SIZE_MAX;
+	}
+  
+	wbuf = bufv[0].base;
+	seg_left = bufv[0].len;
+	if (seg_left > limit_left) {
+	  seg_left = limit_left;
+	}
+  
+	for (;;) {
+	  /* Need at least one full-sized packet buffer per call.  We do not
+		 split a packet across buffer segments. */
+	  if (limit_left < path_max_udp_payloadlen) {
+		rv = (ngtcp2_ssize)total_written;
+		break;
+	  }
+  
+	  if (seg_left < path_max_udp_payloadlen) {
+		/* Current segment cannot fit another packet; move to next segment. */
+		if (seg_written) {
+		  bufv_usedlen[used++] = seg_written;
+		  seg_written = 0;
+		}
+  
+		++seg_idx;
+		if (seg_idx >= bufvcnt) {
+		  rv = (ngtcp2_ssize)total_written;
+		  break;
+		}
+  
+		wbuf = bufv[seg_idx].base;
+		seg_left = bufv[seg_idx].len;
+		if (seg_left > limit_left) {
+		  seg_left = limit_left;
+		}
+  
+		if (seg_left < path_max_udp_payloadlen) {
+		  rv = (ngtcp2_ssize)total_written;
+		  break;
+		}
+	  }
+  
+	  ecn_state = conn->tx.ecn.state;
+  
+	  wbuflen =
+		(seg_left >= max_udp_payloadlen && limit_left >= max_udp_payloadlen)
+		  ? max_udp_payloadlen
+		  : path_max_udp_payloadlen;
+  
+	  nwrite = write_pkt(conn, path, pi, wbuf, wbuflen, ts, conn->user_data);
+	  if (nwrite < 0) {
+		rv = nwrite;
+		break;
+	  }
+  
+	  if (nwrite == 0) {
+		rv = (ngtcp2_ssize)total_written;
+		break;
+	  }
+  
+	  first_pkt = total_written == 0;
+  
+	  wbuf += nwrite;
+	  seg_left -= (size_t)nwrite;
+	  seg_written += (size_t)nwrite;
+  
+	  total_written += (size_t)nwrite;
+	  limit_left -= (size_t)nwrite;
+  
+	  --num_pkts;
+  
+	  if (first_pkt) {
+		assert(!(conn->flags & NGTCP2_CONN_FLAG_AGGREGATE_PKTS));
+  
+		*pgsolen = (size_t)nwrite;
+  
+		if ((size_t)nwrite != path_max_udp_payloadlen ||
+			!ngtcp2_aggregate_vec_has_space_for_next(
+			  seg_left, seg_idx, bufv, bufvcnt, path_max_udp_payloadlen,
+			  limit_left) ||
+			ecn_state != conn->tx.ecn.state || num_pkts == 0) {
+		  rv = (ngtcp2_ssize)total_written;
+		  break;
+		}
+  
+		/* All aggregated packets should share the same path and pi.
+		   Pass the placeholder values to the callback because they
+		   might be overwritten by later calls, especially pi is set to
+		   empty when no packet is produced. */
+		if (path) {
+		  ngtcp2_path_storage_zero(&path_discard);
+		  path = &path_discard.path;
+		}
+  
+		if (pi) {
+		  pi = &pi_discard;
+		}
+  
+		conn->flags |= NGTCP2_CONN_FLAG_AGGREGATE_PKTS;
+  
+		continue;
+	  }
+  
+	  if (!ngtcp2_aggregate_vec_has_space_for_next(
+			seg_left, seg_idx, bufv, bufvcnt, path_max_udp_payloadlen,
+			limit_left) ||
+		  (size_t)nwrite < *pgsolen || ecn_state != conn->tx.ecn.state ||
+		  num_pkts == 0) {
+		rv = (ngtcp2_ssize)total_written;
+		break;
+	  }
+	}
+  
+	conn->flags &= ~NGTCP2_CONN_FLAG_AGGREGATE_PKTS;
+  
+	if (rv >= 0) {
+	  if (seg_written) {
+		bufv_usedlen[used++] = seg_written;
+	  }
+	  *pbufv_used = used;
+	}
+  
+	return rv;
+}
+
+ngtcp2_ssize ngtcp2_conn_write_aggregate_pkt_versioned_vec(
+	ngtcp2_conn *conn, ngtcp2_path *path, int pkt_info_version,
+	ngtcp2_pkt_info *pi, const ngtcp2_vec *bufv, size_t bufvcnt,
+	size_t *pbufv_used, size_t *bufv_usedlen, size_t *pgsolen,
+	ngtcp2_write_pkt write_pkt, ngtcp2_tstamp ts) {
+	ngtcp2_ssize nwrite;
+	size_t send_quantum = ngtcp2_conn_get_send_quantum(conn);
+
+	nwrite = ngtcp2_conn_write_aggregate_pkt2_versioned_vec_impl(
+	  conn, path, pkt_info_version, pi, bufv, bufvcnt, pbufv_used, bufv_usedlen,
+	  pgsolen, write_pkt, 0, ts, send_quantum);
+	if (nwrite < 0) {
+	  return nwrite;
+	}
+
+	ngtcp2_conn_update_pkt_tx_time(conn, ts);
+
+	return nwrite;
+}
+
+ngtcp2_ssize ngtcp2_conn_write_aggregate_pkt2_versioned_vec(
+	ngtcp2_conn *conn, ngtcp2_path *path, int pkt_info_version,
+	ngtcp2_pkt_info *pi, const ngtcp2_vec *bufv, size_t bufvcnt,
+	size_t *pbufv_used, size_t *bufv_usedlen, size_t *pgsolen,
+	ngtcp2_write_pkt write_pkt, size_t num_pkts, ngtcp2_tstamp ts) {
+	return ngtcp2_conn_write_aggregate_pkt2_versioned_vec_impl(
+	  conn, path, pkt_info_version, pi, bufv, bufvcnt, pbufv_used, bufv_usedlen,
+	  pgsolen, write_pkt, num_pkts, ts, SIZE_MAX);
+}
+
 ngtcp2_tstamp ngtcp2_conn_get_timestamp(const ngtcp2_conn *conn) {
   return conn->log.last_ts;
 }
