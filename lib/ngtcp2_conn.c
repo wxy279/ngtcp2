@@ -6033,12 +6033,15 @@ static int conn_recv_connection_close(ngtcp2_conn *conn,
   conn->state = NGTCP2_CS_DRAINING;
   if (fr->type == NGTCP2_FRAME_CONNECTION_CLOSE) {
     ccerr->type = NGTCP2_CCERR_TYPE_TRANSPORT;
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_quic_close_ide);
   } else {
     ccerr->type = NGTCP2_CCERR_TYPE_APPLICATION;
+    FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_app_close_ide);
   }
   ccerr->error_code = fr->error_code;
   ccerr->frame_type = fr->frame_type;
 
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_draining_ide);
   if (!fr->reasonlen) {
     ccerr->reasonlen = 0;
 
@@ -6054,7 +6057,6 @@ static int conn_recv_connection_close(ngtcp2_conn *conn,
 
   ccerr->reasonlen = ngtcp2_min(fr->reasonlen, NGTCP2_CCERR_MAX_REASONLEN);
   ngtcp2_cpymem((uint8_t *)ccerr->reason, fr->reason, ccerr->reasonlen);
-  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_draining_ide);
   return 0;
 }
 
@@ -8021,6 +8023,7 @@ static int conn_on_stateless_reset(ngtcp2_conn *conn, const ngtcp2_path *path,
 
   conn->state = NGTCP2_CS_DRAINING;
   FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_conn_act_draining_ide);
+  FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_rx_staless_rst_ide);
   ngtcp2_log_rx_sr(&conn->log, &sr);
 
   ngtcp2_qlog_stateless_reset_pkt_received(&conn->qlog, &sr);

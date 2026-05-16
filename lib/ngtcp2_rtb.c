@@ -465,6 +465,16 @@ static int rtb_on_pkt_lost(ngtcp2_rtb *rtb, ngtcp2_rtb_entry *ent,
   } else {
     FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_lost_pkts_ide);
 	FAST_STATS_ADD(conn->stats_ctx, dproxy_myquic_stats_lost_bytes_ide, ent->pktlen);
+
+	if (pktns->id == NGTCP2_PKTNS_ID_APPLICATION) {
+		FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_lost_1rtt_pkts_ide);
+	} else if (pktns->id == NGTCP2_PKTNS_ID_HANDSHAKE) {
+		FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_lost_handshake_pkts_ide);
+	} else if (pktns->id == NGTCP2_PKTNS_ID_INITIAL) {
+		FAST_STATS_INC(conn->stats_ctx, dproxy_myquic_stats_lost_init_pkts_ide);
+	} else {
+	}
+
     ++cstat->pkt_lost;
     cstat->bytes_lost += ent->pktlen;
 

@@ -39,6 +39,13 @@ typedef enum _dproxy_myquic_statistics_e
 	dproxy_myquic_stats_conn_closing_closed_ide,
 	dproxy_myquic_stats_conn_draining_closed_ide,
 	dproxy_myquic_stats_conn_others_closed_ide,//                                    id 34
+	dproxy_myquic_stats_rx_app_close_ide,
+	dproxy_myquic_stats_rx_quic_close_ide,
+	dproxy_myquic_stats_rx_staless_rst_ide,
+	dproxy_myquic_stats_lost_init_pkts_ide,
+	dproxy_myquic_stats_lost_handshake_pkts_ide,//                                    id 39
+	dproxy_myquic_stats_lost_1rtt_pkts_ide,
+
 	dproxy_myquic_N_STATS
 } dproxy_myquic_statistics_e;
 
